@@ -243,7 +243,6 @@ def mod_stp_order():
 frame = customtkinter.CTkFrame(master=root)
 frame.pack(pady=20, padx=60, fill="both", expand=True)
 
-
 label1 = customtkinter.CTkLabel(master=frame, text="First Ticker Name")
 label1.grid(row=0, column=0, padx=5, pady=5, sticky="w")
 name = customtkinter.CTkEntry(master=frame, placeholder_text="Name")
