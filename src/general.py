@@ -8,7 +8,7 @@ root =  customtkinter.CTk()
 root.geometry("500x800")
 
 # System message label
-system_message = customtkinter.CTkLabel(master=root, text="", text_color="white", wraplength=450)
+system_message = customtkinter.CTkLabel(master=root, text="IBKR Trading Interface Program", text_color="white", wraplength=450)
 system_message.pack(pady=10)
 
 def display_message(msg, color="white"):
