@@ -78,7 +78,7 @@ def create_button_relative_position(master: customtkinter.CTkFrame, text: str, c
     button.pack(side=side)
     return button
 
-def display_message(frame: customtkinter.CTkLabel, msg: Union[str, list[str]], color: str = "white"):
+def display_message(frame: customtkinter.CTkLabel, msg: Union[str, List[str]], color: str = "white"):
     frame.configure(text=msg, text_color=color)
 
 ################################################################
