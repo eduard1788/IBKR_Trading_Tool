@@ -1,6 +1,6 @@
 import customtkinter
 from ib_insync import *
-from typing import Union
+from typing import Union, List
 ib = IB() # Define ib globally
 
 
@@ -9,6 +9,7 @@ customtkinter.set_default_color_theme("green")
 root =  customtkinter.CTk()
 root.geometry("500x800")
 
+accounts = ["U3297495", "U4572134", "U7514316", "DU1717711", "DU2883726"]
 
 ####################################################
 ######### Initializing widget dictionaries #########
@@ -24,11 +25,13 @@ lmt_buttons = {}
 mkt_buttons = {}
 orderId_entry_labels = {}
 orderId_stop_labels = {}
+checkbox_vars = {}
+checkboxs = {}
 
 
-##########################################################################
-######### Create labels, entries, and buttons in the grid layout #########
-##########################################################################
+################################################################################################
+######### Create labels, entries, checkbox, drop-downs, and buttons in the grid layout #########
+################################################################################################
 
 def create_frame_grid_position(master, pady: int = 20, padx: int = 60, fill: str = "both", expand: bool = True):
     frame = customtkinter.CTkFrame(master=master)
@@ -46,9 +49,19 @@ def create_entry_grid_position(frame: customtkinter.CTkFrame, text, row=0, colum
      return entry_name
 
 def create_button_grid_position(frame: customtkinter.CTkFrame, text: str, function, row: int = 0, column: int = 0, padx: int = 5, pady: int = 5, sticky: str = "w", width: int = 140, height: int = 28,):
-    button = customtkinter.CTkButton(master = frame, text = text, command = function)
+    button = customtkinter.CTkButton(master=frame, text=text, command=function)
     button.grid(row=row, column=column, padx=5, pady=5, sticky="w")
     return button
+
+def create_checkbox_grid_position(frame: customtkinter.CTkFrame, text: str, tracking_variable: customtkinter.BooleanVar, row: int = 0, column: int = 0, padx: int = 5, pady: int = 5, sticky: str = "w", width: int =16, height: int = 16):
+    checkbox = customtkinter.CTkCheckBox(master=frame, text=text, variable=tracking_variable, width=width, height=height)
+    checkbox.grid(row=row, column=column, padx=padx, pady=pady, sticky=sticky)
+    return checkbox
+
+def create_dropdown_relative_position(master: customtkinter.CTkFrame, variable: customtkinter.StringVar, values: any, padx: int = 5, pady: int = 5, side: str = 'right'):
+    dropdown = customtkinter.CTkOptionMenu(master = master, variable = variable, values = values)
+    dropdown.pack(padx=padx, pady=pady, side=side)
+    return dropdown
 
 def create_frame_relative_position(master, fg_color: str = "transparent", relx: int = 1, rely: int = 0, anchor: str = "ne"):
     frame = customtkinter.CTkFrame(master=master, fg_color=fg_color)
@@ -68,12 +81,11 @@ def create_button_relative_position(master: customtkinter.CTkFrame, text: str, c
 def display_message(frame: customtkinter.CTkLabel, msg: Union[str, list[str]], color: str = "white"):
     frame.configure(text=msg, text_color=color)
 
-
 ################################################################
 ###########           System message label           ###########
 ################################################################
 
-system_message = customtkinter.CTkLabel(master=root, text="Test", text_color="white", wraplength=450)
+system_message = customtkinter.CTkLabel(master=root, text="", text_color="white", wraplength=450)
 system_message.pack(pady=10)
 
 
@@ -90,41 +102,46 @@ frame = create_frame_grid_position(root)
 
 def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
     for col in range(columns):
-        ticker_label = create_label_grid_position(frame, f"Ticker Name # {col+1}", row=0, column=col)
+        ticker_label = create_label_grid_position(frame, f"Symbol # {col+1}", row=0, column=col)
 
-        stp_name = create_entry_grid_position(frame, "Name", row=1, column=col)
+        checkbox_var = customtkinter.BooleanVar(value=False) 
+        checkbox_vars[col] = checkbox_var
+        checkbox = create_checkbox_grid_position(frame, text = "Save", tracking_variable = checkbox_var, row = 1, column = col, width = 1, height =1)
+        checkboxs[col] = checkbox
+
+        stp_name = create_entry_grid_position(frame, "Name", row=2, column=col)
         stp_name_entries[col] = stp_name
 
-        stp_risk_USD = create_entry_grid_position(frame, "Risk in USD", row=2, column=col)
+        stp_risk_USD = create_entry_grid_position(frame, "Risk in USD", row=3, column=col)
         stp_risk_USD_entries[col] = stp_risk_USD
 
-        orderId_entry_label = create_label_grid_position(frame, "Order ID Entry:", row=3, column=col)
+        orderId_entry_label = create_label_grid_position(frame, "Order ID Entry:", row=4, column=col)
         orderId_entry_labels[col] = orderId_entry_label
 
-        stp_entry = create_entry_grid_position(frame, "Entry", row=4, column=col)
+        stp_entry = create_entry_grid_position(frame, "Entry", row=5, column=col)
         stp_entry_entries[col] = stp_entry
 
-        orderId_stop_label = create_label_grid_position(frame, "Order ID Stop:", row=5, column=col)
+        orderId_stop_label = create_label_grid_position(frame, "Order ID Stop:", row=6, column=col)
         orderId_stop_labels[col] = orderId_stop_label
 
-        stp_loss = create_entry_grid_position(frame, "Stop Loss", row=6, column=col)
+        stp_loss = create_entry_grid_position(frame, "Stop Loss", row=7, column=col)
         stp_loss_entries[col] = stp_loss
 
-        stp_button = create_button_grid_position(frame, "Summit STP Order", lambda c=col: stp_order(c, 'U3297495'), row=7, column=col)
+        stp_button = create_button_grid_position(frame, "Summit STP Order", lambda c=col: stp_order(c, 'U3297495'), row=8, column=col)
         stp_buttons[col] = stp_button
 
-        spacer_1 = create_label_grid_position(frame, text="", row=8, column=col)
-        lmt_entry = create_entry_grid_position(frame, "Limit Price", row=9, column=col)
+        spacer_1 = create_label_grid_position(frame, text="", row=9, column=col)
+        lmt_entry = create_entry_grid_position(frame, "Limit Price", row=10, column=col)
         lmt_entry_entries[col] = lmt_entry
 
-        lmt_button = create_button_grid_position(frame, "Summit Limit Order", frame, row=10, column=col)
+        lmt_button = create_button_grid_position(frame, "Summit Limit Order", frame, row=11, column=col)
         lmt_buttons[col] = lmt_button
 
-        spacer_2 = create_label_grid_position(frame, text="", row=11, column=col)
-        mkt_button = create_button_grid_position(frame, "Submit Sell MKT Order", frame, row=12, column=col)
+        spacer_2 = create_label_grid_position(frame, text="", row=12, column=col)
+        mkt_button = create_button_grid_position(frame, "Submit Sell MKT Order", frame, row=13, column=col)
         mkt_buttons[col] = mkt_button
 
-        spacer_3 = create_label_grid_position(frame, text="", row=13, column=col)
+        spacer_3 = create_label_grid_position(frame, text="", row=14, column=col)
 
 
 #################################################

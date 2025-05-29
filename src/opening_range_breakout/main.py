@@ -44,10 +44,6 @@ def connect_ib():
     except Exception as e:
         display_message(system_message, f"⚠️ Connection attempt failed: {str(e)}", color="yellow")
 
-num_columns = input("Enter the number of columns for the grid layout: ")
-num_columns = int(num_columns)
-draw_widgets(num_columns, frame)
-
 
 #############################################################
 ######### Frame for buttons in the top-right corner #########
@@ -60,12 +56,21 @@ button_frame = create_frame_relative_position(master = root, relx = 1, rely = 0)
 ######### Create buttons and entries in the connectivity frame #########
 ########################################################################
 
-port = create_entry_relative_position(master=button_frame, placeholder_text="Conn Port")
-client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID")
-connect_reconnect_button = create_button_relative_position(master=button_frame, text="Disconnected", command=connect_ib)
+dropdown_var = customtkinter.StringVar(value="Select account")
+accounts_menu = create_dropdown_relative_position(master=button_frame, variable=dropdown_var, values=accounts)
+port = create_entry_relative_position(master=button_frame, placeholder_text="Conn Port", side="right")
+client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID", side="right")
+connect_reconnect_button = create_button_relative_position(master=button_frame, text="Disconnected", command=connect_ib, side="left")
 
 
 # Start main program
 
 if __name__ == "__main__":
+    # Prompt user for number of columns before launching main window
+    input_dialog = customtkinter.CTkInputDialog(text="Enter the number of columns for the grid layout:", title="Grid Columns")
+    num_columns = input_dialog.get_input()
+    if num_columns is None or not num_columns.isdigit() or int(num_columns) < 1:
+        raise ValueError("Invalid number of columns entered.")
+    num_columns = int(num_columns)
+    draw_widgets(num_columns, frame)
     root.mainloop()
