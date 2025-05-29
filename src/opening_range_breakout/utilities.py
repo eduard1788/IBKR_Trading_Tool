@@ -3,7 +3,7 @@ from ib_insync import *
 from typing import Union, List
 ib = IB() # Define ib globally
 
-
+# Connect to the IB Gateway or TWS
 customtkinter.set_appearance_mode("dark")
 customtkinter.set_default_color_theme("green")
 root =  customtkinter.CTk()
