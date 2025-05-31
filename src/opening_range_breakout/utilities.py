@@ -29,6 +29,45 @@ checkbox_vars = {}
 checkboxs = {}
 
 
+def update_button_status():
+    ### Updates the button text and color based on connection status.
+    if ib.isConnected():
+        connect_reconnect_button.configure(text="Connected", fg_color="green")
+    else:
+        connect_reconnect_button.configure(text="Disconnected", fg_color="red")
+    # Re-check status every 1 second
+    root.after(1000, update_button_status)
+
+def connect_ib():
+    # Clear previous messages
+    display_message(system_message, "")
+    # Get connection parameters
+    value_port = port.get().strip()
+    value_client = client_id.get().strip()
+    
+    missing_fields = []
+    if not value_port:
+        missing_fields.append("Port Number")
+    if not value_client:
+        missing_fields.append("Client ID")
+    if missing_fields:
+        missing_message = f"⚠️ Missing: {', '.join(missing_fields)}. Please fill in all fields."
+        display_message(system_message, missing_message, color="red")
+        return  # Stop execution if fields are missing
+    try:
+        value_port = int(value_port)
+        value_client = int(value_client)
+        global ib
+        if not ib.isConnected():
+            util.startLoop()
+            ib.connect('127.0.0.1', value_port, clientId=value_client)
+        else:
+            ib.disconnect()
+        update_button_status()  # Update button after connection attempt
+    except Exception as e:
+        display_message(system_message, f"⚠️ Connection attempt failed: {str(e)}", color="yellow")
+
+
 ################################################################################################
 ######### Create labels, entries, checkbox, drop-downs, and buttons in the grid layout #########
 ################################################################################################
@@ -95,6 +134,23 @@ system_message.pack(pady=10)
 
 frame = create_frame_grid_position(root)
 
+#############################################################
+######### Frame for buttons in the top-right corner #########
+#############################################################
+
+button_frame = create_frame_relative_position(master = root, relx = 1, rely = 0)
+
+
+########################################################################
+######### Create buttons and entries in the connectivity frame #########
+########################################################################
+
+dropdown_var = customtkinter.StringVar(value=accounts[0])  # Default to the first account
+accounts_menu = create_dropdown_relative_position(master=button_frame, variable=dropdown_var, values=accounts)
+port = create_entry_relative_position(master=button_frame, placeholder_text="Conn Port", side="right")
+client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID", side="right")
+connect_reconnect_button = create_button_relative_position(master=button_frame, text="Disconnected", command=connect_ib, side="left")
+
 
 ########################################################################################
 ######### Dynamically Creating labels, entries, and buttons in the grid layout #########
@@ -127,7 +183,7 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
         stp_loss = create_entry_grid_position(frame, "Stop Loss", row=7, column=col)
         stp_loss_entries[col] = stp_loss
 
-        stp_button = create_button_grid_position(frame, "Summit STP Order", lambda c=col: stp_order(c, 'U3297495'), row=8, column=col)
+        stp_button = create_button_grid_position(frame, "Summit STP Order", lambda c=col: test_button(c), row=8, column=col)
         stp_buttons[col] = stp_button
 
         spacer_1 = create_label_grid_position(frame, text="", row=9, column=col)
@@ -209,5 +265,22 @@ def stp_order(col: int, account_num):
         display_message(system_message, f"⚠️ Order submission failed: {str(e)}", color="yellow")
         #print(f"Orders have been successfully submitted: Name={value_name}, Entry={value_entry}, Stop price={value_stop}, Position={position}")
 
+def test_button(col: int):
+    # Clear previous messages
+    display_message(system_message, "", color="white")
+    # Debug: print id of dropdown_var to ensure it's the same object
+    print(f"dropdown_var id in test_button: {id(dropdown_var)}")
+    # Get input values
+    name = stp_name_entries[col].get()
+    risk = stp_risk_USD_entries[col].get()
+    entry = stp_entry_entries[col].get()
+    stop = stp_loss_entries[col].get()
+    lmt = lmt_entry_entries[col].get()
+    account = dropdown_var.get()
+    save = checkbox_vars[col].get()
 
+    # I need to print these with display_message function
+    display_message(system_message, f"Test Button pressed in column {col}: Name={name}, Risk={risk}, Entry={entry}, Stop={stop}, Limit={lmt}, Account={account}, Save={save}")
+    print(f"dropdown_var value in test_button: {account}")
+    return None
 
