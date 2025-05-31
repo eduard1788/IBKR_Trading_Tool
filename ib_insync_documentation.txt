@@ -1,0 +1,14 @@
+"""
+
+IBKR ib_insync Documentation
+
+"""
+
+gitHub repo
+https://github.com/erdewit/ib_insync/blob/master/notebooks/ordering.ipynb
+
+IBKR Docs
+https://www.interactivebrokers.com/campus/ibkr-api-page/twsapi-doc/#api-introduction
+
+ib_insync classs and methods documentation
+https://ib-insync.readthedocs.io/api.html#module-ib_insync.order
