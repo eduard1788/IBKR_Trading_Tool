@@ -1,0 +1,32 @@
+
+# Create an instance of Stock(), the exchange is SMART, and the currency is USD.
+stock = Stock(symbol=name, exchange='SMART', currency='USD')
+
+# Create a contract for the stock.
+ib.qualifyContracts(stock)
+
+"""
+Create an order object with the Order() class.
+This class allows you to set various atrtributes for the order,
+such as the order type, quantity, price, tif, transmit.
+
+The following attributes are set in order to create and transmit a market order:
+
+totalQuantity: number of stocks
+
+lmtPrice: LMT price
+auxPrice: STP price
+
+orderType: MKT, STP or LMT
+
+action: BUY or SELL
+
+transmit: True or False
+
+The following attributes will be generated after a trade object is return by Order()
+
+orderId: 
+
+clientId
+
+"""

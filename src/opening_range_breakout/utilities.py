@@ -2,6 +2,7 @@ import customtkinter
 from ib_insync import *
 from typing import Union, List
 ib = IB() # Define ib globally
+import math
 
 # Connect to the IB Gateway or TWS
 customtkinter.set_appearance_mode("dark")
@@ -144,9 +145,9 @@ button_frame = create_frame_relative_position(master = root, relx = 1, rely = 0)
 ########################################################################
 ######### Create buttons and entries in the connectivity frame #########
 ########################################################################
-
-dropdown_var = customtkinter.StringVar(value=accounts[0])  # Default to the first account
+dropdown_var = customtkinter.StringVar(value="Select account")
 accounts_menu = create_dropdown_relative_position(master=button_frame, variable=dropdown_var, values=accounts)
+
 port = create_entry_relative_position(master=button_frame, placeholder_text="Conn Port", side="right")
 client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID", side="right")
 connect_reconnect_button = create_button_relative_position(master=button_frame, text="Disconnected", command=connect_ib, side="left")
@@ -183,7 +184,7 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
         stp_loss = create_entry_grid_position(frame, "Stop Loss", row=7, column=col)
         stp_loss_entries[col] = stp_loss
 
-        stp_button = create_button_grid_position(frame, "Summit STP Order", lambda c=col: test_button(c), row=8, column=col)
+        stp_button = create_button_grid_position(frame, "Summit STP Order",lambda c=col: link_order(c), row=8, column=col)
         stp_buttons[col] = stp_button
 
         spacer_1 = create_label_grid_position(frame, text="", row=9, column=col)
@@ -215,10 +216,10 @@ def stp_order(col: int, account_num):
     # Clear previous messages
     display_message(system_message, "", color="white") 
     # Get input values
-    risk = stp_risk_USD_entries[col].get()
-    name = stp_name_entries[col].get()
-    entry = stp_entry_entries[col].get()
-    stop = stp_loss_entries[col].get()
+    risk = float(stp_risk_USD_entries[col].get())
+    name = float(stp_name_entries[col].get())
+    entry = float(stp_entry_entries[col].get())
+    stop = float(stp_loss_entries[col].get())
 
     missing_fields = []
     if not risk:
@@ -265,22 +266,184 @@ def stp_order(col: int, account_num):
         display_message(system_message, f"⚠️ Order submission failed: {str(e)}", color="yellow")
         #print(f"Orders have been successfully submitted: Name={value_name}, Entry={value_entry}, Stop price={value_stop}, Position={position}")
 
+def initial_ORB_order(col: int):
+    
+    # Clear previous messages
+    display_message(system_message, "", color="white") 
+    
+    # Get input values
+    value_risk = float(stp_risk_USD_entries[col].get())
+    value_name = stp_name_entries[col].get()
+    value_entry = float(stp_entry_entries[col].get())
+    value_stop = float(stp_loss_entries[col].get())
+
+    account = dropdown_var.get()
+    transmit = checkbox_vars[col].get()
+
+    # Debugging line
+    print(f"Initial ORB Button pressed in column {col+1}: Name={value_name}, Risk={value_risk}, Entry={value_entry}, Stop={value_stop}, Account={account}, Transmit={transmit}")
+    
+    missing_fields = []
+    if not value_risk:
+        missing_fields.append("Risk in USD")
+    if not value_name:
+        missing_fields.append("Ticker name")
+    if not value_entry:
+        missing_fields.append("Entry")
+    if not value_stop:
+        missing_fields.append("Stop loss")
+
+    if missing_fields:
+        missing_message = f"⚠️ Missing: {', '.join(missing_fields)}. Please fill in all fields."
+        display_message(system_message, missing_message, color="red")
+        return  # Stop execution if fields are missing
+    
+    try:
+        stock = Stock(symbol=value_name, exchange='SMART', currency='USD')
+        ib.qualifyContracts(stock)
+        
+        # Calculate position
+        budget = round((value_risk * 100)/(((value_entry-value_stop)/value_entry)*100), 2)
+        position = math.floor(budget/value_entry)
+        print(f"Calculated budget: {budget}, Position: {position}") # Debugging line
+        # Create orders
+        order_BUY = Order(totalQuantity=position, auxPrice=value_entry, orderType='STP', action='BUY')
+        order_SELL = Order(totalQuantity=position, auxPrice=value_stop, orderType='STP', action='SELL')
+        
+        # Place orders
+        trade_BUY = ib.placeOrder(stock, order_BUY)
+        trade_SELL = ib.placeOrder(stock, order_SELL)
+        
+        # Update labels with Order IDs
+        orderId_entry_labels[col].configure(text=f"Order ID Entry: {trade_BUY.order.orderId}")
+        orderId_stop_labels[col].configure(text=f"Order ID Stop: {trade_SELL.order.orderId}")
+        
+        display_message(system_message, f"✅ Orders submitted: {value_name}, Entry={value_entry}, Stop={value_stop}, Position={position}", color="green")
+
+    except Exception as e:
+        display_message(system_message, f"⚠️ Order submission failed: {str(e)}", color="yellow")
+        #print(f"Orders have been successfully submitted: Name={value_name}, Entry={value_entry}, Stop price={value_stop}, Position={position}")
+
 def test_button(col: int):
     # Clear previous messages
     display_message(system_message, "", color="white")
-    # Debug: print id of dropdown_var to ensure it's the same object
-    print(f"dropdown_var id in test_button: {id(dropdown_var)}")
     # Get input values
     name = stp_name_entries[col].get()
-    risk = stp_risk_USD_entries[col].get()
-    entry = stp_entry_entries[col].get()
-    stop = stp_loss_entries[col].get()
-    lmt = lmt_entry_entries[col].get()
+    risk = float(stp_risk_USD_entries[col].get())
+    entry = float(stp_entry_entries[col].get())
+    stop = float(stp_loss_entries[col].get())
+    lmt = float(lmt_entry_entries[col].get())
     account = dropdown_var.get()
-    save = checkbox_vars[col].get()
+    transmit = checkbox_vars[col].get()
+
+    # Create a stock contract
+    stock = Stock(symbol=name, exchange='SMART', currency='USD')
+    ib.qualifyContracts(stock)
+
+    budget = (risk * 100)/(((entry-stop)/entry)*100)
+    position = math.floor(budget/entry)
+
+    # Create orders
+    order_BUY = Order(totalQuantity=position, auxPrice=entry, orderType='STP', action='BUY')
+    order_SELL = Order(totalQuantity=position, auxPrice=stop, orderType='STP', action='SELL')
+
+    # Set account number for orders
+    order_BUY.account = account
+    order_SELL.account = account
+
+    # Set transmit flag for bracket order logic
+    order_BUY.transmit = False  # Do not transmit yet
+    order_SELL.transmit = True  # Transmit both orders together
+
+    # Place orders
+    trade_BUY = ib.placeOrder(stock, order_BUY)
+    trade_SELL = ib.placeOrder(stock, order_SELL)
+    # Update labels with Order IDs
+    orderId_entry_labels[col].configure(text=f"Order ID Entry: {trade_BUY.order.orderId}")
+    orderId_stop_labels[col].configure(text=f"Order ID Stop: {trade_SELL.order.orderId}")
 
     # I need to print these with display_message function
-    display_message(system_message, f"Test Button pressed in column {col}: Name={name}, Risk={risk}, Entry={entry}, Stop={stop}, Limit={lmt}, Account={account}, Save={save}")
-    print(f"dropdown_var value in test_button: {account}")
+    display_message(system_message, f"Test Button pressed in column {col}: Name={name}, Risk={risk}, Entry={entry}, Stop={stop}, Position={position}, Budget={budget}, Account={account}, Save={transmit}")
     return None
 
+def link_order(col: int):
+    # Specify contract
+    symbol = stp_name_entries[col].get()
+    entry_val = stp_entry_entries[col].get()
+    stop_val = stp_loss_entries[col].get()
+    risk_val = stp_risk_USD_entries[col].get()
+
+    # Input validation
+    missing_fields = []
+    if not symbol:
+        missing_fields.append("Ticker name")
+    if not entry_val:
+        missing_fields.append("Entry price")
+    if not stop_val:
+        missing_fields.append("Stop loss")
+    if not risk_val:
+        missing_fields.append("Risk in USD")
+    if missing_fields:
+        display_message(system_message, f"⚠️ Missing: {', '.join(missing_fields)}. Please fill in all fields.", color="red")
+        return
+
+    stock = Stock(symbol=symbol, exchange='SMART', currency='USD')
+    ib.qualifyContracts(stock)
+
+    # Define your values
+    account = dropdown_var.get()        # your actual account number
+    entry_price = float(entry_val)         # your STP Buy price
+    stop_price = float(stop_val)         # your STP Sell price
+    risk = float(risk_val)  # FIX: ensure risk is float
+
+    budget = (risk * 100)/(((entry_price-stop_price)/entry_price)*100)
+    quantity = math.floor(budget/entry_price)
+
+    # Define the STP BUY order (entry)
+    buy_order = Order(
+        action='BUY',
+        totalQuantity=quantity,
+        orderType='STP',
+        auxPrice=entry_price,
+        tif='GTC',              # Good-Til-Cancelled
+        account=account,
+        transmit=False          # Do not transmit yet — needed to link children
+    )
+
+    # Define the STP SELL order (risk management)
+    sell_order = Order(
+        action='SELL',
+        totalQuantity=quantity,
+        orderType='STP',
+        auxPrice=stop_price,
+        tif='GTC',
+        parentId=0,             # will update this after placing the BUY order
+        account=account,
+        transmit=True           # last in the chain transmits all orders
+    )
+
+    # Place parent order
+    trade_BUY = ib.placeOrder(stock, buy_order)
+
+    # Wait until order has an ID
+    print("Waiting for BUY order to be registered...")
+    ib.sleep(10)  # Wait for the order to be registered
+    parent_id = trade_BUY.order.orderId
+    print(f"BUY order registered with ID: {parent_id}")
+
+    # Update child with parentId
+    sell_order.parentId = parent_id
+
+    # Optional: Set OCA group so one cancels the other
+    oca_group = f"OCA_{symbol}_{parent_id}"
+    buy_order.ocaGroup = oca_group
+    sell_order.ocaGroup = oca_group
+    buy_order.ocaType = 1  # CANCEL_WITH_BLOCK
+    sell_order.ocaType = 1
+
+    # Place the SELL order
+    trade_SELL = ib.placeOrder(stock, sell_order)
+
+    # Monitor or wait for completion
+    print(f"BUY order ID: {trade_BUY.order.orderId}")
+    print(f"SELL order ID: {trade_SELL.order.orderId}")
