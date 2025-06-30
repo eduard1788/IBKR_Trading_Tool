@@ -19,9 +19,9 @@ ib.connect('127.0.0.1', 4001, clientId=1)
 account_ids = ib.managedAccounts()
 
 
-# ------------------------------------- #
-# 1. Fetch Account Information Summary  #
-# ------------------------------------- #
+# -----------------------------------------
+# ✅ 1. Fetch Account Information Summary #
+# -----------------------------------------
 
 # Use delayed market data
 ib.reqMarketDataType(3)
@@ -183,86 +183,99 @@ print(symbol_totals.to_string(index=False))
 # -----------------------------
 # ✅ 3. Fetch Open Positions #
 # -----------------------------
-# before loop
+# Get the list of managed accounts
+account_ids = ib.managedAccounts()
+
+# Use delayed market data
+ib.reqMarketDataType(3)
+
+# Today's date
 today = datetime.now().strftime('%Y-%m-%d')
 
-ib.reqMarketDataType(3)   # use delayed data if no real-time
-
-positions = ib.positions()
+# Store all position records here
 position_records = []
 
-for pos in positions:
-    if pos.account != account_id:
-        continue
+# Loop through each account
+for account_id in account_ids:
+    positions = ib.positions(account=account_id)
 
-    contract = pos.contract
-    quantity = pos.position
-    avg_cost = pos.avgCost
+    for pos in positions:
+        contract = pos.contract
+        quantity = pos.position
+        avg_cost = pos.avgCost
 
-    # fetch a price snapshot
-    ib.qualifyContracts(contract)
-    ticker = ib.reqMktData(contract, snapshot=True)
-    ib.sleep(1)  # avoid pacing violations
+        # Fetch snapshot price
+        ib.qualifyContracts(contract)
+        ticker = ib.reqMktData(contract, snapshot=True)
+        ib.sleep(1.0)  # Respect pacing limits
 
-    price = (
-        ticker.last
-        or ticker.close
-        or getattr(ticker, 'delayedLast', None)
-        or getattr(ticker, 'delayedClose', None)
-        or 0.0
-    )
+        # Handle missing/delayed data safely
+        price = (
+            getattr(ticker, 'last', None)
+            or getattr(ticker, 'close', None)
+            or getattr(ticker, 'delayedLast', None)
+            or getattr(ticker, 'delayedClose', None)
+            or 0.0
+        )
 
-    market_value   = price * quantity
-    unrealized_pnl = (price - avg_cost) * quantity
-    realized_pnl   = None
+        market_value = price * quantity
+        unrealized_pnl = (price - avg_cost) * quantity
+        realized_pnl = None  # Not exposed in positions API
 
-    position_records.append({
-        'Date':             today,              # ← current date
-        'Account':          account_id,         # ← account filter
-        'Symbol':           contract.symbol,
-        'Quantity':         quantity,
-        'Average Cost':     avg_cost,
-        'Current Price':    price,
-        'Market Value':     market_value,
-        'Unrealized PnL':   unrealized_pnl,
-        'Realized PnL':     realized_pnl,
-        'Currency':         contract.currency
-    })
+        position_records.append({
+            'Date': today,
+            'Account': account_id,
+            'Symbol': contract.symbol,
+            'Quantity': quantity,
+            'Average Cost': avg_cost,
+            'Current Price': price,
+            'Market Value': market_value,
+            'Unrealized PnL': unrealized_pnl,
+            'Realized PnL': realized_pnl,
+            'Currency': contract.currency
+        })
 
+# Create final DataFrame
 df_positions = pd.DataFrame(position_records)
 
 
 # ----------------------------
 # ✅ 4. Fetch Active Orders #
 # ----------------------------
-# Prepare date once
+# Prepare current date once
 today = datetime.now().strftime('%Y-%m-%d')
 
-# Fetch all open orders (across all sessions)
+# Fetch all open orders
 open_orders = ib.reqAllOpenOrders()
 
+# Container for all records
 order_records = []
-for order in open_orders:
-    order_obj = order.order
 
-    # Filter by account
-    if order_obj.account != account_id:
-        continue
+# Loop through each account
+for account_id in account_ids:
+    for order in open_orders:
+        order_obj = order.order
 
-    contract = order.contract
-    order_records.append({
-        'Date':        today,               # ← current date
-        'Account':     account_id,          # ← your account ID
-        'Order ID':    order_obj.orderId,
-        'Symbol':      contract.symbol,
-        'Action':      order_obj.action,
-        'Order Type':  order_obj.orderType,
-        'Quantity':    order_obj.totalQuantity,
-        'Lmt Price':   order_obj.lmtPrice,
-        'Aux Price':   order_obj.auxPrice,
-        'TIF':         order_obj.tif,
-        'Transmit':    order_obj.transmit,
-        'Status':      order.orderStatus.status
-    })
+        # Filter by account
+        if order_obj.account != account_id:
+            continue
 
+        contract = order.contract
+
+        order_records.append({
+            'Date':        today,
+            'Account':     account_id,
+            'Order ID':    order_obj.orderId,
+            'Symbol':      contract.symbol,
+            'Action':      order_obj.action,
+            'Order Type':  order_obj.orderType,
+            'Quantity':    order_obj.totalQuantity,
+            'Lmt Price':   order_obj.lmtPrice,
+            'Aux Price':   order_obj.auxPrice,
+            'TIF':         order_obj.tif,
+            'Transmit':    order_obj.transmit,
+            'Status':      order.orderStatus.status
+        })
+
+# Create final DataFrame
 df_orders = pd.DataFrame(order_records)
