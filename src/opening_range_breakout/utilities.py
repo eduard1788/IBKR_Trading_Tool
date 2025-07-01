@@ -126,7 +126,7 @@ def show_open_orders_widget(master=None):
     def refresh_table():
         for widget in scroll_frame.winfo_children():
             widget.destroy()
-        df = fetch_open_orders_df()
+        df = fetch_open_orders_df(ib)
         if df.empty:
             customtkinter.CTkLabel(scroll_frame, text="No open orders found.", text_color="yellow").grid(row=0, column=0)
             return
@@ -180,9 +180,16 @@ def create_dropdown_relative_position(master: customtkinter.CTkFrame, variable: 
     dropdown.pack(padx=padx, pady=pady, side=side)
     return dropdown
 
+    """_summary_
+    Corner	       relx	     rely	 anchor
+    Top Left	    0	      0	     'nw'
+    Top Right	    1	      0	     'ne'
+    Bottom Left	    0	      1	     'sw'
+    Bottom Right	1	      1	     'se'
+    """         
 def create_frame_relative_position(master, fg_color: str = "transparent", relx: int = 1, rely: int = 0, anchor: str = "ne"):
     frame = customtkinter.CTkFrame(master=master, fg_color=fg_color)
-    frame.place(relx=1, rely=0, anchor="ne")
+    frame.place(relx=relx, rely=rely, anchor=anchor)
     return frame
 
 def create_entry_relative_position(master: customtkinter.CTkFrame, placeholder_text: str, side: str = "right", width: int = 120):
@@ -217,6 +224,7 @@ frame = create_frame_grid_position(root)
 #############################################################
 
 button_frame = create_frame_relative_position(master = root, relx = 1, rely = 0)
+button_frame_2 = create_frame_relative_position(master = root, relx = 0, rely = 0, anchor='nw')
 
 
 def load_excel_files():
@@ -277,7 +285,7 @@ port = create_entry_relative_position(master=button_frame, placeholder_text="Con
 client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID", side="right", width=60)
 connect_reconnect_button = create_button_relative_position(master=button_frame, text="Disconnected", command=connect_ib, side="left")
 
-load_excel_button = create_button_relative_position(master=button_frame, text="Load Excel Files", command=load_excel_files, side="left", width=120, fg_color="blue")
+load_excel_button = create_button_relative_position(master=button_frame_2, text="Load Excel Files", command=load_excel_files, side="right", width=120, fg_color="gray")
 
 ########################################################################################
 ######### Dynamically Creating labels, entries, and buttons in the grid layout #########
@@ -347,12 +355,12 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
 
 # Add a button to your main UI to open this widget
 open_orders_btn = create_button_relative_position(
-    master=button_frame,
+    master=button_frame_2,
     text="Show Open Orders",
     command=show_open_orders_widget,
     side="left",
     width=120,
-    fg_color="orange"
+    fg_color="gray"
 )
 
 #################################################
