@@ -7,7 +7,7 @@ from time import sleep
 import pandas as pd
 from tkinter import filedialog
 import openpyxl
-from common import validate_values_stp_button
+from common import validate_info_stp_button
 
 ib = IB() # Define ib globally
 
@@ -92,10 +92,10 @@ def confirm_operation(message: str, on_yes, on_no = None):
     """
     confirm_win = customtkinter.CTkToplevel(root)
     confirm_win.title("Confirm Operation")
-    confirm_win.geometry("300x150")
+    confirm_win.geometry("600x300")
     confirm_win.grab_set()  # Make the window modal
 
-    label = customtkinter.CTkLabel(confirm_win, text=message)
+    label = customtkinter.CTkLabel(confirm_win, text=message, wraplength=400, justify="left")
     label.pack(pady=15)
 
     button_frame = customtkinter.CTkFrame(confirm_win)
@@ -164,7 +164,7 @@ def create_button_relative_position(master: customtkinter.CTkFrame, text: str, c
     button.pack(side=side)
     return button
 
-def display_message(frame: customtkinter.CTkLabel, msg: Union[str, list[str]], color: str = "white"):
+def display_message(frame: customtkinter.CTkLabel, msg: Union[str, List[str]], color: str = "white"):
     frame.configure(text=msg, text_color=color)
 
 ################################################################
@@ -388,31 +388,35 @@ def get_parent_child_event(symbol, parent_order, child_order, stp_flag):
 
 def main_order(col: int):
     
+    ######################
+    #   1. Get values    #
+    ######################
+    values = get_values(col)
+    
+    #######################
+    # 2. Input validation #
+    #######################
+
+    valid, order, flag_fields_ok, missing_fileds = validate_info_stp_button(values)
+    
+    if not valid:
+        display_message(system_message, f"⚠️ {order}", color="red")
+        return
+        
+    if not flag_fields_ok:
+        display_message(system_message, f"⚠️ Missing: {', '.join(missing_fileds)}. Please fill in all fields.", color="red")
+        return
+    
+    
     def cancel():
         display_message(system_message, "Operation cancelled by user", color="yellow")
     
     def proceed():
-        ######################
-        #   1. Get values    #
-        ######################
-        values = get_values(col)
 
         #types_dict = {k: type(v) if v is not None else None for k, v in values.items()}
         #print(f"Values in column {types_dict}")
 
-        #######################
-        # 2. Input validation #
-        #######################
 
-        valid, order, flag_fields_ok, missing_fileds = validate_values_stp_button(values)
-        if not valid:
-            display_message(system_message, f"⚠️ {order}", color="red")
-            return
-        
-        if not flag_fields_ok:
-            display_message(system_message, f"⚠️ Missing: {', '.join(missing_fileds)}. Please fill in all fields.", color="red")
-            return
-        
         starting_message = f"Submitting a {order}..."
         show_order_wait(starting_message)
         sleep(2)
@@ -471,6 +475,7 @@ def main_order(col: int):
             name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order, stp_flag = stp_flag)
             # Show order transmission result message
             display_message(system_message, f"Symbol: {name}, BUY order ID: {parent_order_id} / SELL order ID: {child_order_id}, position: {position}", color="green")
-        
-    mes = "Are you sure you want to submit this order?"
-    confirm_operation(mes, on_yes = proceed, on_no = cancel)
+            
+    mes = "Are you sure you want to submit this order?\n"
+    order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nStop: {values['stop']}\nRisk USD: {values['risk_USD']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    confirm_operation(mes + order_summary, on_yes = proceed, on_no = cancel)

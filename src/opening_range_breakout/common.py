@@ -6,7 +6,7 @@ risk_based = ['symbol', 'risk_USD', 'entry', 'stop']
 position_based = ['symbol', 'position', 'entry', 'stop']
 not_stp_loss = ['symbol', 'position', 'entry']
 
-def validate_values_stp_button(result_dict: dict):
+def validate_info_stp_button(result_dict: dict):
     if (not result_dict['symbol']) | (not result_dict['entry']):
         valid = True
         order = "Please select a symbol and entry price."
