@@ -7,6 +7,7 @@ from time import sleep
 import pandas as pd
 from tkinter import filedialog
 import openpyxl
+from common import validate_values_stp_button
 
 ib = IB() # Define ib globally
 
@@ -81,8 +82,8 @@ def connect_ib():
     except Exception as e:
         display_message(system_message, f"⚠️ Connection attempt failed: {str(e)}", color="yellow")
 
-def show_order_wait():
-    display_message(system_message, "Waiting for order to be registered...", color="yellow")
+def show_order_wait(message):
+    display_message(system_message, message, color="yellow")
 
 def confirm_operation(message: str, on_yes, on_no = None):
     """
@@ -153,8 +154,8 @@ def create_frame_relative_position(master, fg_color: str = "transparent", relx: 
     frame.place(relx=1, rely=0, anchor="ne")
     return frame
 
-def create_entry_relative_position(master: customtkinter.CTkFrame, placeholder_text: str, side: str = "right"):
-    entry = customtkinter.CTkEntry(master=master, placeholder_text=placeholder_text)
+def create_entry_relative_position(master: customtkinter.CTkFrame, placeholder_text: str, side: str = "right", width: int = 120):
+    entry = customtkinter.CTkEntry(master=master, placeholder_text=placeholder_text, width=width)
     entry.pack(side=side)
     return entry
 
@@ -242,8 +243,8 @@ def load_excel_files():
 dropdown_var = customtkinter.StringVar(value="Select account")
 accounts_menu = create_dropdown_relative_position(master=button_frame, variable=dropdown_var, values=accounts)
 
-port = create_entry_relative_position(master=button_frame, placeholder_text="Conn Port", side="right")
-client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID", side="right")
+port = create_entry_relative_position(master=button_frame, placeholder_text="Conn Port", side="right", width=60)
+client_id = create_entry_relative_position(master=button_frame, placeholder_text="Client ID", side="right", width=60)
 connect_reconnect_button = create_button_relative_position(master=button_frame, text="Disconnected", command=connect_ib, side="left")
 
 load_excel_button = create_button_relative_position(master=button_frame, text="Load Excel Files", command=load_excel_files, side="left", width=120, fg_color="blue")
@@ -356,28 +357,38 @@ def set_order(action: str, quantity: int, order_type: str, price: float, tif: st
     )
     return order
 
-def get_parent_child_event(symbol, parent_order, child_order):
+def get_parent_child_event(symbol, parent_order, child_order, stp_flag):
+    if stp_flag:
+        # Only send the parent order, do not send the child order
+        stock = Stock(symbol=symbol, exchange='SMART', currency='USD')
+        ib.qualifyContracts(stock)
 
-    # Select the contract based on the symbol
-    stock = Stock(symbol=symbol, exchange='SMART', currency='USD')
-    ib.qualifyContracts(stock)
-        
-    parent_trade = ib.placeOrder(stock, parent_order)
-    parent_id = parent_trade.order.orderId
-    child_order.parentId = parent_id
-    # Set OCA group so one cancels the other
-    oca_group = f"OCA_{symbol}_{parent_id}"
-    parent_order.ocaGroup = oca_group
-    child_order.ocaGroup = oca_group
-    parent_order.ocaType = 1  # CANCEL_WITH_BLOCK
-    child_order.ocaType = 1
-    # Place the SELL order
-    child_trade = ib.placeOrder(stock, child_order)
+        parent_trade = ib.placeOrder(stock, parent_order)
+        ib.sleep(1)  # Wait for the order to be processed
+        position = parent_order.totalQuantity
+        return symbol, parent_trade.order.orderId, None, position
+    else:
+        # Select the contract based on the symbol
+        stock = Stock(symbol=symbol, exchange='SMART', currency='USD')
+        ib.qualifyContracts(stock)
 
-    # Get position (quantity) from parent or child order
-    position = parent_order.totalQuantity  # or child_order.totalQuantity
+        parent_trade = ib.placeOrder(stock, parent_order)
+        ib.sleep(1)  # Wait for the order to be processed
+        parent_id = parent_trade.order.orderId
+        child_order.parentId = parent_id
+        # Set OCA group so one cancels the other
+        oca_group = f"OCA_{symbol}_{parent_id}"
+        parent_order.ocaGroup = oca_group
+        child_order.ocaGroup = oca_group
+        parent_order.ocaType = 1  # CANCEL_WITH_BLOCK
+        child_order.ocaType = 1
+        # Place the SELL order
+        child_trade = ib.placeOrder(stock, child_order)
 
-    return symbol, parent_trade.order.orderId, child_trade.order.orderId, position
+        # Get position (quantity) from parent or child order
+        position = parent_order.totalQuantity  # or child_order.totalQuantity
+
+        return symbol, parent_trade.order.orderId, child_trade.order.orderId, position
 
 def on_stp_button_press(col):
     name = stp_name_entries[col].get()
@@ -554,20 +565,37 @@ def main_order(col: int):
         #types_dict = {k: type(v) if v is not None else None for k, v in values.items()}
         #print(f"Values in column {types_dict}")
 
-
-
         #######################
         # 2. Input validation #
         #######################
 
-
+        valid, order, flag_fields_ok, missing_fileds = validate_values_stp_button(values)
+        if not valid:
+            display_message(system_message, order, color="red")
+            return
         
+        if not flag_fields_ok:
+            display_message(system_message, f"⚠️ Missing: {', '.join(missing_fileds)}. Please fill in all fields.", color="red")
+            return
+        
+        starting_message = f"Submitting a {order}..."
+        show_order_wait(starting_message)
+        sleep(2)
+        print(valid)
+        print(order)
+        print(flag_fields_ok)
+        print(missing_fileds)
+
         if values['position_based']:
-            quantity = int(values['position_based'])
+            quantity = int(values['position'])
+            entry = float(values['entry'])
+            stop = float(values['stop'])
         else:
             risk = float(values['risk_USD'])
-            budget = abs((risk * 100)/(((float(values['entry']-values['stop'])/values['entry']))*100))
-            quantity = abs(math.floor(budget/float(values['entry'])))
+            entry = float(values['entry'])
+            stop = float(values['stop'])
+            budget = abs((risk * 100)/(((float(entry-stop)/entry))*100))
+            quantity = abs(math.floor(budget/float(entry)))
         
         ######################
         #   2. Get orders    #
@@ -575,27 +603,37 @@ def main_order(col: int):
 
         if values["short_pos"]:
             # sell order is the parent, buy order is the child
-            parent_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = float(values['entry']), tif = 'GTC', account = values['account'], transmit = False)
-            child_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = float(values['stop']), tif = 'GTC', account = values['account'], transmit = True)
+            if values['not_stp_loss']:
+                parent_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = True)
+                child_order = None
+            else:
+                parent_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = False)
+                child_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = stop, tif = 'GTC', account = values['account'], transmit = True)
         else:
             # buy order is the parent, sell order is the child
-            parent_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = float(values['entry']), tif = 'GTC', account = values['account'], transmit = False)
-            child_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = float(values['stop']), tif = 'GTC', account = values['account'], transmit = True)
+            if values['not_stp_loss']:
+                parent_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = True)
+                child_order = None
+            else:
+                parent_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = False)
+                child_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = stop, tif = 'GTC', account = values['account'], transmit = True)
 
         ######################
         #   3. Send order    #
         ######################
 
         # Show waiting message
-        show_order_wait()
+        message = "Waiting for order to be registered..."
+        show_order_wait(message)
         sleep(3)
         # Send the parent and child orders
+        stp_flag = values['not_stp_loss']
         if values['not_stp_loss']:
-            name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order)
+            name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order, stp_flag = stp_flag)
             # Show order transmission result message
             display_message(system_message, f"Symbol: {name}, BUY order ID: {parent_order_id} / SELL order ID: {child_order_id}, position: {position}", color="green")
         else:
-            name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order)
+            name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order, stp_flag = stp_flag)
             # Show order transmission result message
             display_message(system_message, f"Symbol: {name}, BUY order ID: {parent_order_id} / SELL order ID: {child_order_id}, position: {position}", color="green")
         
@@ -630,12 +668,8 @@ def main_order(col: int):
             return
     """
 
-    mes = "Are you sure you want to proceed?"
+    mes = "Are you sure you want to submit this order?"
     confirm_operation(mes, on_yes = proceed, on_no = cancel)
-
-        
-    
-
 
     """
         # Define the STP BUY order (entry)
