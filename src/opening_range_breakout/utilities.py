@@ -8,6 +8,7 @@ import pandas as pd
 from tkinter import filedialog
 import openpyxl
 from common import validate_info_stp_button
+from ib_utilities import fetch_open_orders_df
 
 ib = IB() # Define ib globally
 
@@ -114,6 +115,36 @@ def confirm_operation(message: str, on_yes, on_no = None):
     yes_btn.pack(side="left", padx=10)
     no_btn = customtkinter.CTkButton(button_frame, text="No", command=no_action, fg_color="red")
     no_btn.pack(side="left", padx=10)
+
+def show_open_orders_widget(master=None):
+    # Create a new window or frame for the table
+    orders_win = customtkinter.CTkToplevel(master or root)
+    orders_win.title("Open Orders")
+    orders_win.geometry("1100x400")
+
+    # Add a refresh button
+    def refresh_table():
+        for widget in scroll_frame.winfo_children():
+            widget.destroy()
+        df = fetch_open_orders_df()
+        if df.empty:
+            customtkinter.CTkLabel(scroll_frame, text="No open orders found.", text_color="yellow").grid(row=0, column=0)
+            return
+        # Add headers
+        for j, col in enumerate(df.columns):
+            customtkinter.CTkLabel(scroll_frame, text=col, font=("Arial", 12, "bold")).grid(row=0, column=j, padx=2, pady=2)
+        # Add rows
+        for i, row in df.iterrows():
+            for j, value in enumerate(row):
+                customtkinter.CTkLabel(scroll_frame, text=str(value), font=("Arial", 11)).grid(row=i+1, column=j, padx=2, pady=2)
+
+    refresh_btn = customtkinter.CTkButton(orders_win, text="Refresh", command=refresh_table, fg_color="blue")
+    refresh_btn.pack(pady=5)
+
+    scroll_frame = customtkinter.CTkScrollableFrame(orders_win, width=1050, height=320)
+    scroll_frame.pack(fill="both", expand=True, padx=10, pady=10)
+    
+    refresh_table()  # Initial load of the table
 
 ################################################################################################
 ######### Create labels, entries, checkbox, drop-downs, and buttons in the grid layout #########
@@ -268,7 +299,7 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
 
         checkbox_sh_var = customtkinter.BooleanVar(value=False) 
         checkbox_sh_vars[col] = checkbox_sh_var
-        checkbox_sh = create_checkbox_grid_position(frame, text = "Short position", tracking_variable = checkbox_sh_var, row = 3, column = col, width = 1, height =1)
+        checkbox_sh = create_checkbox_grid_position(frame, text = "Sell position", tracking_variable = checkbox_sh_var, row = 3, column = col, width = 1, height =1)
         checkboxs_sh[col] = checkbox_sh
 
         spacer_1 = create_label_grid_position(frame, text="", row=4, column=col)
@@ -293,7 +324,7 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
         stp_loss = create_entry_grid_position(frame, "Stop Loss", row=11, column=col)
         stp_loss_entries[col] = stp_loss
 
-        stp_button = create_button_grid_position(frame, "Summit STP Order",lambda c=col: main_order(c), row=12, column=col)
+        stp_button = create_button_grid_position(frame, "Summit STP Order",lambda c=col: stp_order(c), row=12, column=col)
         stp_buttons[col] = stp_button
 
         orderId_lmt_label = create_label_grid_position(frame, "Order ID Limit:", row=13, column=col)
@@ -313,6 +344,16 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
 
         mkt_button = create_button_grid_position(frame, "Submit Sell MKT Order", frame, row=18, column=col)
         mkt_buttons[col] = mkt_button
+
+# Add a button to your main UI to open this widget
+open_orders_btn = create_button_relative_position(
+    master=button_frame,
+    text="Show Open Orders",
+    command=show_open_orders_widget,
+    side="left",
+    width=120,
+    fg_color="orange"
+)
 
 #################################################
 ################# Action Buttons ################
@@ -386,7 +427,7 @@ def get_parent_child_event(symbol, parent_order, child_order, stp_flag):
 
         return symbol, parent_trade.order.orderId, child_trade.order.orderId, position
 
-def main_order(col: int):
+def stp_order(col: int):
     
     ######################
     #   1. Get values    #
@@ -475,7 +516,14 @@ def main_order(col: int):
             name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order, stp_flag = stp_flag)
             # Show order transmission result message
             display_message(system_message, f"Symbol: {name}, BUY order ID: {parent_order_id} / SELL order ID: {child_order_id}, position: {position}", color="green")
+          
             
     mes = "Are you sure you want to submit this order?\n"
-    order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nStop: {values['stop']}\nRisk USD: {values['risk_USD']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    if (order == "Risk-based Buy/Sell order") | (order == "Risk-based Sell/Buy order"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nStop: {values['stop']}\nRisk USD: {values['risk_USD']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    elif(order == "Position-based Buy/Sell order") | (order == "Position-based Sell/Buy order"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nStop: {values['stop']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    elif(order == "Position-based Buy order") | (order == "Position-based Sell order"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    
     confirm_operation(mes + order_summary, on_yes = proceed, on_no = cancel)
