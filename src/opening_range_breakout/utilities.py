@@ -46,6 +46,7 @@ checkboxs_sh = {}
 position_entries = {}
 cancel_entry_entries = {}
 cancel_buttons = {}
+modify_buttons = {}
 
 def update_button_status():
     ### Updates the button text and color based on connection status.
@@ -593,7 +594,7 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
 
         checkbox_s_var = customtkinter.BooleanVar(value=False) 
         checkbox_s_vars[col] = checkbox_s_var
-        checkbox_s = create_checkbox_grid_position(frame, text = "Not include stp loss", tracking_variable = checkbox_s_var, row = 2, column = col, width = 1, height =1)
+        checkbox_s = create_checkbox_grid_position(frame, text = "Not include STP loss", tracking_variable = checkbox_s_var, row = 2, column = col, width = 1, height =1)
         checkboxs_s[col] = checkbox_s
 
         checkbox_sh_var = customtkinter.BooleanVar(value=False) 
@@ -611,37 +612,43 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
         positions = create_entry_grid_position(frame, "Position", row=7, column=col)
         position_entries[col] = positions
 
-        orderId_entry_label = create_label_grid_position(frame, "Order ID Entry:", row=8, column=col)
-        orderId_entry_labels[col] = orderId_entry_label
+        #orderId_entry_label = create_label_grid_position(frame, "Order ID Entry:", row=8, column=col)
+        #orderId_entry_labels[col] = orderId_entry_label
 
-        stp_entry = create_entry_grid_position(frame, "Entry", row=9, column=col)
+        stp_entry = create_entry_grid_position(frame, "Entry", row=8, column=col)
         stp_entry_entries[col] = stp_entry
 
-        orderId_stop_label = create_label_grid_position(frame, "Order ID Stop:", row=10, column=col)
-        orderId_stop_labels[col] = orderId_stop_label
+        #orderId_stop_label = create_label_grid_position(frame, "Order ID Stop:", row=10, column=col)
+        #orderId_stop_labels[col] = orderId_stop_label
 
-        stp_loss = create_entry_grid_position(frame, "Stop Loss", row=11, column=col)
+        stp_loss = create_entry_grid_position(frame, "Stop Loss", row=9, column=col)
         stp_loss_entries[col] = stp_loss
 
-        stp_button = create_button_grid_position(frame, "Summit STP Order",lambda c=col: stp_order(c), row=12, column=col)
+        stp_button = create_button_grid_position(frame, "Summit STP Order",lambda c=col: stp_order(c), row=10, column=col)
         stp_buttons[col] = stp_button
 
-        orderId_lmt_label = create_label_grid_position(frame, "Order ID Limit:", row=13, column=col)
-        orderId_lmt_labels[col] = orderId_lmt_label
+        #orderId_lmt_label = create_label_grid_position(frame, "Order ID Limit:", row=13, column=col)
+        #orderId_lmt_labels[col] = orderId_lmt_label
 
-        lmt_entry = create_entry_grid_position(frame, "Limit Price", row=14, column=col)
+        spacer_2 = create_label_grid_position(frame, text="", row=11, column=col)
+        lmt_entry = create_entry_grid_position(frame, "Limit Price", row=12, column=col)
         lmt_entry_entries[col] = lmt_entry
 
-        lmt_button = create_button_grid_position(frame, "Summit Limit Order", frame, row=15, column=col)
+        lmt_button = create_button_grid_position(frame, "Summit Limit Order", frame, row=13, column=col)
         lmt_buttons[col] = lmt_button
 
-        cancel_entry = create_entry_grid_position(frame, "order ID", row=16, column=col)
+        spacer_3 = create_label_grid_position(frame, text="", row=14, column=col)
+        cancel_entry = create_entry_grid_position(frame, "order ID", row=15, column=col)
         cancel_entry_entries[col] = cancel_entry
 
-        cancel_button = create_button_grid_position(frame, "Summit Cancel Order", frame, row=17, column=col)
+        modify_button = create_button_grid_position(frame, "Modify Order", frame, row=16, column=col)
+        modify_buttons[col] = modify_button
+
+        cancel_button = create_button_grid_position(frame, "Cancel Order", frame, row=17, column=col)
         cancel_buttons[col] = cancel_button
 
-        mkt_button = create_button_grid_position(frame, "Submit Sell MKT Order", frame, row=18, column=col)
+        spacer_4 = create_label_grid_position(frame, text="", row=18, column=col)
+        mkt_button = create_button_grid_position(frame, "Submit Sell MKT Order", frame, row=19, column=col)
         mkt_buttons[col] = mkt_button
 
 # Add a button to your main UI to open this widget
