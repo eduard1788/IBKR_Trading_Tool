@@ -7,7 +7,7 @@ from time import sleep
 import pandas as pd
 from tkinter import filedialog
 import openpyxl
-from common import validate_info_stp_button
+from common import *
 from ib_utilities import fetch_open_orders_df
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -47,6 +47,7 @@ position_entries = {}
 cancel_entry_entries = {}
 cancel_buttons = {}
 modify_buttons = {}
+orderid_entries = {}
 
 def update_button_status():
     ### Updates the button text and color based on connection status.
@@ -190,6 +191,7 @@ def create_dropdown_relative_position(master: customtkinter.CTkFrame, variable: 
     Bottom Left	    0	      1	     'sw'
     Bottom Right	1	      1	     'se'
     """         
+
 def create_frame_relative_position(master, fg_color: str = "transparent", relx: int = 1, rely: int = 0, anchor: str = "ne"):
     frame = customtkinter.CTkFrame(master=master, fg_color=fg_color)
     frame.place(relx=relx, rely=rely, anchor=anchor)
@@ -550,10 +552,10 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     df_orders = pd.DataFrame(order_records)
 
     # Concatenate old and new DataFrames for each sheet
-    concat_summary_df = pd.concat([sheets_file_update['Summary'], summary_df], ignore_index=True)
-    concat_orders_full = pd.concat([sheets_file_update['Stock Activity'], orders_full], ignore_index=True)
-    concat_orders = pd.concat([sheets_file_update['Active Orders'], df_orders], ignore_index=True)
-    concat_position = pd.concat([sheets_file_update['Positions'], df_positions], ignore_index=True)
+    concat_summary_df = pd.concat([sheets_file_update['Summary'], summary_df], ignore_index=True).drop_duplicates()
+    concat_orders_full = pd.concat([sheets_file_update['Stock Activity'], orders_full], ignore_index=True).drop_duplicates()
+    concat_orders = pd.concat([sheets_file_update['Active Orders'], df_orders], ignore_index=True).drop_duplicates()
+    concat_position = pd.concat([sheets_file_update['Positions'], df_positions], ignore_index=True).drop_duplicates()
 
     # --------------------------------------
     # ✅ 5. Saving as excell file
@@ -638,10 +640,10 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
         lmt_buttons[col] = lmt_button
 
         spacer_3 = create_label_grid_position(frame, text="", row=14, column=col)
-        cancel_entry = create_entry_grid_position(frame, "order ID", row=15, column=col)
-        cancel_entry_entries[col] = cancel_entry
+        orderid_entry = create_entry_grid_position(frame, "order ID", row=15, column=col)
+        orderid_entries[col] = orderid_entry
 
-        modify_button = create_button_grid_position(frame, "Modify Order", frame, row=16, column=col)
+        modify_button = create_button_grid_position(frame, "Modify Order", lambda c=col: modify_order(c), row=16, column=col)
         modify_buttons[col] = modify_button
 
         cancel_button = create_button_grid_position(frame, "Cancel Order", frame, row=17, column=col)
@@ -677,7 +679,8 @@ def get_values(col: int) -> Dict[str, Any]:
         "not_stp_loss": checkbox_s_vars[col].get(),
         "short_pos": checkbox_sh_vars[col].get(),
         "limit": lmt_entry_entries[col].get(),
-        "account":  dropdown_var.get()
+        "account": dropdown_var.get(),
+        "order_id": orderid_entries[col].get()
     }
     return results_dict
 
@@ -734,6 +737,105 @@ def get_parent_child_event(symbol, parent_order, child_order, stp_flag):
         return symbol, parent_trade.order.orderId, child_trade.order.orderId, position
 
 def stp_order(col: int):
+    
+    ######################
+    #   1. Get values    #
+    ######################
+    values = get_values(col)
+    
+    #######################
+    # 2. Input validation #
+    #######################
+
+    valid, order, flag_fields_ok, missing_fileds = validate_info_stp_button(values)
+    
+    if not valid:
+        display_message(system_message, f"⚠️ {order}", color="red")
+        return
+        
+    if not flag_fields_ok:
+        display_message(system_message, f"⚠️ Missing: {', '.join(missing_fileds)}. Please fill in all fields.", color="red")
+        return
+    
+    def cancel():
+        display_message(system_message, "Operation cancelled by user", color="yellow")
+    
+    def proceed():
+
+        #types_dict = {k: type(v) if v is not None else None for k, v in values.items()}
+        #print(f"Values in column {types_dict}")
+
+        starting_message = f"Submitting a {order}..."
+        show_order_wait(starting_message)
+        sleep(2)
+        print(valid)
+        print(order)
+        print(flag_fields_ok)
+        print(missing_fileds)
+
+        if values['position_based']:
+            quantity = int(values['position'])
+            entry = float(values['entry'])
+            stop = float(values['stop'])
+        else:
+            risk = float(values['risk_USD'])
+            entry = float(values['entry'])
+            stop = float(values['stop'])
+            budget = abs((risk * 100)/(((float(entry-stop)/entry))*100))
+            quantity = abs(math.floor(budget/float(entry)))
+        
+        ######################
+        #   2. Get orders    #
+        ######################
+
+        if values["short_pos"]:
+            # sell order is the parent, buy order is the child
+            if values['not_stp_loss']:
+                parent_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = True)
+                child_order = None
+            else:
+                parent_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = False)
+                child_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = stop, tif = 'GTC', account = values['account'], transmit = True)
+        else:
+            # buy order is the parent, sell order is the child
+            if values['not_stp_loss']:
+                parent_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = True)
+                child_order = None
+            else:
+                parent_order = set_order(action = 'BUY', quantity = quantity, order_type = 'STP', price = entry, tif = 'GTC', account = values['account'], transmit = False)
+                child_order = set_order(action = 'SELL', quantity = quantity, order_type = 'STP', price = stop, tif = 'GTC', account = values['account'], transmit = True)
+
+        ######################
+        #   3. Send order    #
+        ######################
+
+        # Show waiting message
+        message = "Waiting for order to be registered..."
+        show_order_wait(message)
+        sleep(3)
+        # Send the parent and child orders
+        stp_flag = values['not_stp_loss']
+        if values['not_stp_loss']:
+            name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order, stp_flag = stp_flag)
+            # Show order transmission result message
+            display_message(system_message, f"Symbol: {name}, BUY order ID: {parent_order_id} / SELL order ID: {child_order_id}, position: {position}", color="green")
+        else:
+            name, parent_order_id, child_order_id, position = get_parent_child_event(symbol = values['symbol'], parent_order = parent_order, child_order = child_order, stp_flag = stp_flag)
+            # Show order transmission result message
+            display_message(system_message, f"Symbol: {name}, BUY order ID: {parent_order_id} / SELL order ID: {child_order_id}, position: {position}", color="green")
+          
+            
+    mes = "Are you sure you want to submit this order?\n"
+    if (order == "Risk-based Buy/Sell order") | (order == "Risk-based Sell/Buy order"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nStop: {values['stop']}\nRisk USD: {values['risk_USD']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    elif(order == "Position-based Buy/Sell order") | (order == "Position-based Sell/Buy order"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nStop: {values['stop']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    elif(order == "Position-based Buy order") | (order == "Position-based Sell order"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
+    
+    confirm_operation(mes + order_summary, on_yes = proceed, on_no = cancel)
+
+def lmt_order(col: int):
     
     ######################
     #   1. Get values    #
@@ -833,3 +935,146 @@ def stp_order(col: int):
         order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: STP --> ({order})\nSymbol: {values['symbol']}\nEntry: {values['entry']}\nPosition: {values['position']}\nPosition-based: {values['position_based']}\nNot include stop loss: {values['not_stp_loss']}\nShort position: {values['short_pos']}\nAccount: {values['account']}"
     
     confirm_operation(mes + order_summary, on_yes = proceed, on_no = cancel)
+
+def modify_order(col: int):
+    """
+    Modify orders based on order ID
+    """
+    ######################
+    #   1. Get values    #
+    ######################
+    values = get_values(col)
+
+    valid, order, flag_fields_ok, missing_fileds = validate_info_mod_button(values)
+
+    if not valid:
+        display_message(system_message, f"⚠️ {order}", color="red")
+        return
+    
+    if not flag_fields_ok:
+        display_message(system_message, f"⚠️ Missing: {', '.join(missing_fileds)}. Please fill in all fields.", color="red")
+        return
+    
+    order_id = int(values['order_id'])
+    account_id = values['account']
+    try:
+        ent = int(values['entry'])
+    except ValueError:
+        ent = None
+    try:
+        pos = int(values['position'])
+    except ValueError:
+        pos = None
+    
+    def cancel():
+        display_message(system_message, "Operation cancelled by user", color="yellow")
+
+    def proceed():
+
+        # Get all open orders
+        open_orders = ib.reqAllOpenOrders()
+        
+        print(f"Order Input: {type(order_id)}, Account Input: {type(account_id)}")
+        for o in open_orders:
+            print(f"o.order.orderId={o.order.orderId} ({type(o.order.orderId)}), input order_id={order_id} ({type(order_id)})")
+            print(f"o.order.account={o.order.account} ({type(o.order.account)}), input account_id={account_id} ({type(account_id)})")
+        
+        # Find your order by ID and account
+        matching_order = next(
+            (o for o in open_orders 
+            if o.order.orderId == order_id and o.order.account == account_id),
+            None
+        )
+
+        if matching_order is None:
+            return display_message(system_message, f"⚠️ No open order found with orderId {values['order_id']} for account {values['account']}.")
+        
+        # Current values
+        current_order: Order = matching_order.order
+        order_type = current_order.orderType.upper()
+        current_quantity = current_order.totalQuantity
+
+        # Decide new quantity
+        new_quantity = pos if pos is not None else current_quantity
+
+        # Decide new quantity (LMT/STP)
+        new_lmt_price = current_order.lmtPrice
+        new_aux_price = current_order.auxPrice
+
+        if ent is not None:
+            if order_type == 'LMT':
+                new_lmt_price = float(ent)
+            elif order_type == 'STP':
+                new_aux_price = float(ent)
+            else:
+                return display_message(system_message, f"⚠️ Order type {order_type} not supported for modification.", color = "red")
+
+        # Prepare the modified order
+        modified_order = Order(
+            orderId = order_id,
+            account = account_id,
+            action = current_order.action,
+            totalQuantity = new_quantity,
+            orderType = order_type,
+            lmtPrice = new_lmt_price,
+            auxPrice = new_aux_price,
+            tif = current_order.tif,
+            transmit = True
+        )
+
+        # Send modification
+        ib.placeOrder(matching_order.contract, modified_order)
+
+        display_message(system_message, f"MODIFIED -> Order={order_id}, Position={new_quantity}, stpPrice={new_aux_price}, lmtPrice={new_lmt_price}", color="green")
+  
+    mes = "Are you sure you want to modify this order?\n"
+    if (order == "Modify order with new price and position size"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: --> ({order})\nOrder ID: {values['order_id']}\nNew Price: {values['entry']}\nPosition: {values['position']}\nAccount: {values['account']}"
+    elif(order == "Modify order with new price"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: --> ({order})\nOrder ID: {values['order_id']}\nNew Price: {values['entry']}\nAccount: {values['account']}"
+    elif(order == "Modify order with new position size"):
+        order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nOrder type: --> ({order})\nOrder ID: {values['order_id']}\nPosition: {values['position']}\nAccount: {values['account']}"
+    
+    confirm_operation(mes + order_summary, on_yes = proceed, on_no = cancel)
+
+def cancel_order(col: int):
+    
+    values = get_values(col)
+
+    order_id = values['order_id']
+    account_id = values['account']
+
+    if (not values['order_id']) | (not values['account']):
+        display_message(system_message, "⚠️ Please provide an order ID and an account to cancel.", color="red")
+        return
+
+    """
+    Cancel an order with a given orderId using ib_insync.
+
+    Args:
+        ib (IB): An active IB() connection.
+        order_id (int): The ID of the order to cancel.
+
+    Returns:
+        str: Message indicating the result.
+    """
+    # Fetch all open orders
+    open_orders = ib.reqAllOpenOrders()
+
+    # Try to find the order with the given ID
+    matching_order = next(
+        (
+            o for o in open_orders
+            if o.order.orderId == order_id and o.order.account == account_id
+        ),
+        None
+    )
+
+    if matching_order is None:
+        return display_message(system_message, f"⚠️ No open order found with orderId {order_id} for account {account_id}.", color = 'red')
+
+    # Cancel the order
+    ib.cancelOrder(matching_order.order)
+
+    return display_message(system_message, f"Order {order_id} cancellation requested for account {account_id}.", color = 'green')
+
