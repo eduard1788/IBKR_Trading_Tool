@@ -646,7 +646,7 @@ def draw_widgets(columns: int = 1, frame: customtkinter.CTkFrame = None):
         modify_button = create_button_grid_position(frame, "Modify Order", lambda c=col: modify_order(c), row=16, column=col)
         modify_buttons[col] = modify_button
 
-        cancel_button = create_button_grid_position(frame, "Cancel Order", frame, row=17, column=col)
+        cancel_button = create_button_grid_position(frame, "Cancel Order", lambda c=col: cancel_order(c), row=17, column=col)
         cancel_buttons[col] = cancel_button
 
         spacer_4 = create_label_grid_position(frame, text="", row=18, column=col)
@@ -1039,42 +1039,51 @@ def modify_order(col: int):
 
 def cancel_order(col: int):
     
+    """
+    Cancel orders based on order ID and account
+    """
+    ######################
+    #   1. Get values    #
+    ######################
     values = get_values(col)
 
-    order_id = values['order_id']
-    account_id = values['account']
+    valid, order, flag_fields_ok, missing_fileds = validate_info_cancel_button(values)
 
-    if (not values['order_id']) | (not values['account']):
-        display_message(system_message, "⚠️ Please provide an order ID and an account to cancel.", color="red")
+    if not valid:
+        display_message(system_message, f"⚠️ {order}", color="red")
         return
+    
+    if not flag_fields_ok:
+        display_message(system_message, f"⚠️ Missing: {', '.join(missing_fileds)}. Please fill in all fields.", color="red")
+        return
+    
+    order_id = int(values['order_id'])
+    account_id = values['account']
+    
+    def cancel():
+        display_message(system_message, "Operation cancelled by user", color="yellow")
 
-    """
-    Cancel an order with a given orderId using ib_insync.
+    def proceed():
 
-    Args:
-        ib (IB): An active IB() connection.
-        order_id (int): The ID of the order to cancel.
+        # Get all open orders
+        open_orders = ib.reqAllOpenOrders()
+        
+        # Find your order by ID and account
+        matching_order = next(
+            (o for o in open_orders 
+            if o.order.orderId == order_id and o.order.account == account_id),
+            None
+        )
 
-    Returns:
-        str: Message indicating the result.
-    """
-    # Fetch all open orders
-    open_orders = ib.reqAllOpenOrders()
+        if matching_order is None:
+            return display_message(system_message, f"⚠️ No open order found with orderId {values['order_id']} for account {values['account']}.")
+        
+        # Cancel the order
+        ib.cancelOrder(matching_order.order)
 
-    # Try to find the order with the given ID
-    matching_order = next(
-        (
-            o for o in open_orders
-            if o.order.orderId == order_id and o.order.account == account_id
-        ),
-        None
-    )
+        display_message(system_message, f"CANCELATION -> Order={order_id}, Account={account_id} has been requested", color="green")
 
-    if matching_order is None:
-        return display_message(system_message, f"⚠️ No open order found with orderId {order_id} for account {account_id}.", color = 'red')
-
-    # Cancel the order
-    ib.cancelOrder(matching_order.order)
-
-    return display_message(system_message, f"Order {order_id} cancellation requested for account {account_id}.", color = 'green')
-
+    mes = "Are you sure you want to cancel this order?\n"
+    order_summary = f"\nOrder Summary:\n------------------------------------------------------------------------------\nMessage: --> ({order})\nOrder ID: {values['order_id']}\nAccount: {values['account']}"
+  
+    confirm_operation(order_summary, on_yes = proceed, on_no = cancel)

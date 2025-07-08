@@ -8,6 +8,7 @@ not_stp_loss = ['symbol', 'position', 'entry']
 mod_price_and_pos = ['entry','position','order_id','account']
 mod_only_price = ['entry','order_id','account']
 mod_only_pos = ['position','order_id','account']
+cancel_order = ['order_id', 'account']
 
 def validate_info_stp_button(result_dict: dict):
     if (not result_dict['symbol']) | (not result_dict['entry']):
@@ -79,6 +80,20 @@ def validate_info_mod_button(result_dict: dict):
     else:
         valid = False
         order = "Please provide an entry price and/or position size, and order ID to modify the order."
+        flag_fields_ok = None
+        missing_fileds = None
+
+    return valid, order, flag_fields_ok, missing_fileds
+
+def validate_info_cancel_button(result_dict: dict):
+    if (result_dict['order_id']) and (result_dict['account']):
+        valid = True
+        order = f"Cancel order: {result_dict['order_id']} for account: {result_dict['account']}"
+        flag_fields_ok, missing_fileds = validate_order_fields(cancel_order, result_dict)
+
+    else:
+        valid = False
+        order = "Please provide an order and account ID to cancel an order."
         flag_fields_ok = None
         missing_fileds = None
 
