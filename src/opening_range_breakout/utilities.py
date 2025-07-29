@@ -368,6 +368,16 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     # Final concatenated DataFrame
     summary_df = pd.DataFrame(all_account_data)
 
+    for col in [
+        'Net Liquidation',
+        'Cash Balance',
+        'Realized PnL',
+        'Unrealized PnL (manual)',
+        'Market Value (Equity)',
+        'Market Value (Cash)'
+    ]:
+        summary_df[col] = pd.to_numeric(summary_df[col], errors='coerce')
+
     # --------------------------------------
     # ✅ 2. Fetch Trades (Stock Activities)
     # --------------------------------------
@@ -440,7 +450,7 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
         [['AccountId','symbol','orderID','OrderDate','OrderQty','OrderPrice',
         'FilledQty','AvgFillPrice','FillAmount','TotalCommission']]
     )
-
+    orders_full['orderID'] = pd.to_numeric(orders_full['orderID'], errors='coerce')
     # 3) (Optional) Combine with summary for a top-level view
     # Group by accountId + symbol, summing quantity and amount
     symbol_totals = (
@@ -550,6 +560,10 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
 
     # Create final DataFrame
     df_orders = pd.DataFrame(order_records)
+
+    # Ensure orderID is numeric in both DataFrames
+    sheets_file_update['Stock Activity']['orderID'] = pd.to_numeric(sheets_file_update['Stock Activity']['orderID'], errors='coerce')
+    orders_full['orderID'] = pd.to_numeric(orders_full['orderID'], errors='coerce')
 
     # Concatenate old and new DataFrames for each sheet
     concat_summary_df = pd.concat([sheets_file_update['Summary'], summary_df], ignore_index=True).drop_duplicates()
