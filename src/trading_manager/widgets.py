@@ -3,6 +3,10 @@ from typing import Union, List
 from .constants import *
 
 def draw_widgets(columns: int = 1, master: customtkinter.CTkFrame = None):
+
+    from .ibkr_client import IBKRClientAPI
+    ib_client = IBKRClientAPI()
+
     for col in range(columns):
         ticker_label = create_label_grid_position(master, f"Symbol # {col+1}", row=0, column=col)
 
@@ -43,7 +47,7 @@ def draw_widgets(columns: int = 1, master: customtkinter.CTkFrame = None):
         stp_loss = create_entry_grid_position(master, "Stop Loss", row=9, column=col)
         stp_loss_entries[col] = stp_loss
 
-        stp_button = create_button_grid_position(master, "Summit STP Order",lambda c=col: stp_order(c), row=10, column=col)
+        stp_button = create_button_grid_position(master, "Summit STP Order",lambda c=col: ib_client.stp_order(c), row=10, column=col)
         stp_buttons[col] = stp_button
 
         #orderId_lmt_label = create_label_grid_position(master, "Order ID Limit:", row=13, column=col)
@@ -53,21 +57,21 @@ def draw_widgets(columns: int = 1, master: customtkinter.CTkFrame = None):
         lmt_entry = create_entry_grid_position(master, "Limit Price", row=12, column=col)
         lmt_entry_entries[col] = lmt_entry
 
-        lmt_button = create_button_grid_position(master, "Summit Limit Order", master, row=13, column=col)
+        lmt_button = create_button_grid_position(master, "Summit Limit Order", lambda c=col: IBKRClientAPI.lmt_order(c), row=13, column=col)
         lmt_buttons[col] = lmt_button
 
         spacer_3 = create_label_grid_position(master, text="", row=14, column=col)
         orderid_entry = create_entry_grid_position(master, "order ID", row=15, column=col)
         orderid_entries[col] = orderid_entry
 
-        modify_button = create_button_grid_position(master, "Modify Order", lambda c=col: modify_order(c), row=16, column=col)
+        modify_button = create_button_grid_position(master, "Modify Order", lambda c=col: IBKRClientAPI.modify_order(c), row=16, column=col)
         modify_buttons[col] = modify_button
 
-        cancel_button = create_button_grid_position(master, "Cancel Order", lambda c=col: cancel_order(c), row=17, column=col)
+        cancel_button = create_button_grid_position(master, "Cancel Order", lambda c=col: IBKRClientAPI.cancel_order(c), row=17, column=col)
         cancel_buttons[col] = cancel_button
 
         spacer_4 = create_label_grid_position(master, text="", row=18, column=col)
-        mkt_button = create_button_grid_position(master, "Submit Sell MKT Order", master, row=19, column=col)
+        mkt_button = create_button_grid_position(master, "Submit Sell MKT Order", lambda c=col: IBKRClientAPI.mkt_order(c), row=19, column=col)
         mkt_buttons[col] = mkt_button
 
 def create_frame_grid_position(master, pady: int = 20, padx: int = 60, fill: str = "both", expand: bool = True):
