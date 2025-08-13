@@ -256,8 +256,8 @@ def load_excel_files():
         Active_Orders = load_sheets['Active Orders']
         Positions = load_sheets['Positions']
         # Delete calculated columns
-        Active_Orders.drop(columns=['Total Amount'], inplace=True)
-        Positions.drop(columns=['Action', 'Cost', 'Total Amount', 'Capital Exposure'], inplace=True)
+        #Active_Orders.drop(columns='Total Amount', inplace=True)
+        #Positions.drop(columns=['Action', 'Cost', 'Total Amount', 'Capital Exposure'], inplace=True)
         # Store in a dictionary for later use
         sheets_file_update = {
             'Summary': Summary,
@@ -574,7 +574,7 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     concat_orders_full = pd.concat([sheets_file_update['Stock Activity'], orders_full], ignore_index=True).drop_duplicates()
     concat_orders = pd.concat([sheets_file_update['Active Orders'], df_orders], ignore_index=True).drop_duplicates()
     concat_position = pd.concat([sheets_file_update['Positions'], df_positions], ignore_index=True).drop_duplicates()
-
+    """
     concat_orders['Total Amount'] = (concat_orders['Quantity'] * concat_orders['Aux Price']) + (concat_orders['Quantity'] * concat_orders['Lmt Price'])
     concat_position['Action'] = np.where(
     concat_position['Quantity'] > 0,  # condition
@@ -586,7 +586,7 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     total_amount_stploss = concat_position.groupby(keys_to_merge)['Total Amount'].sum().reset_index()
     concat_position = concat_position.merge(total_amount_stploss, on=keys_to_merge, how='left')
     concat_position['Capital Exposure'] = concat_position['Total Amount'] - concat_position['Cost']
-
+    """
     # --------------------------------------
     # ✅ 5. Saving as excell file
     # --------------------------------------
