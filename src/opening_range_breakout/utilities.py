@@ -256,8 +256,8 @@ def load_excel_files():
         Active_Orders = load_sheets['Active Orders']
         Positions = load_sheets['Positions']
         # Delete calculated columns
-        #Active_Orders.drop(columns='Total Amount', inplace=True)
-        #Positions.drop(columns=['Action', 'Cost', 'Total Amount', 'Capital Exposure'], inplace=True)
+        Active_Orders.drop(columns='Total Liq Amount', inplace=True)
+        Positions.drop(columns=['Action', 'Cost', 'Total Liq Amount', 'Capital Exposure'], inplace=True)
         # Store in a dictionary for later use
         sheets_file_update = {
             'Summary': Summary,
@@ -574,19 +574,26 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     concat_orders_full = pd.concat([sheets_file_update['Stock Activity'], orders_full], ignore_index=True).drop_duplicates()
     concat_orders = pd.concat([sheets_file_update['Active Orders'], df_orders], ignore_index=True).drop_duplicates()
     concat_position = pd.concat([sheets_file_update['Positions'], df_positions], ignore_index=True).drop_duplicates()
-    """
-    concat_orders['Total Amount'] = (concat_orders['Quantity'] * concat_orders['Aux Price']) + (concat_orders['Quantity'] * concat_orders['Lmt Price'])
+    
+    concat_orders['multi'] = np.where(
+    concat_orders['Action'] == "SELL",  # condition
+    1,          # value if True
+    -1            # value if False
+)
+    concat_orders['Total Liq Amount'] = ((concat_orders['Quantity'] * concat_orders['Aux Price']))* concat_orders['multi']
     concat_position['Action'] = np.where(
     concat_position['Quantity'] > 0,  # condition
     'SELL',          # value if True
     'BUY'            # value if False
 )
+    concat_orders.drop(columns='multi', inplace=True)
+    concat_position['Order Type'] = 'STP'
     concat_position['Cost'] = concat_position['Quantity'] * concat_position['Average Cost']
-    keys_to_merge = ['Date', 'Account', 'Symbol', 'Action']
-    total_amount_stploss = concat_position.groupby(keys_to_merge)['Total Amount'].sum().reset_index()
+    keys_to_merge = ['Date', 'Account', 'Symbol', 'Action', 'Order Type']
+    total_amount_stploss = concat_orders.groupby(keys_to_merge)['Total Liq Amount'].sum().reset_index()
     concat_position = concat_position.merge(total_amount_stploss, on=keys_to_merge, how='left')
-    concat_position['Capital Exposure'] = concat_position['Total Amount'] - concat_position['Cost']
-    """
+    concat_position['Capital Exposure'] = concat_position['Total Liq Amount'] - concat_position['Cost']
+    
     # --------------------------------------
     # ✅ 5. Saving as excell file
     # --------------------------------------
