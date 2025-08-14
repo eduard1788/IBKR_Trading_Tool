@@ -285,7 +285,7 @@ def load_excel_files():
         gp_df = pd.read_excel(file3_path, sheet_name='gameplan')
 
         # Ask user for save path
-        default_filename = f"trading_report_{datetime.now().strftime('%Y%m%d')}.xlsx"
+        default_filename = f"trading_report_v2{datetime.now().strftime('%Y%m%d')}.xlsx"
         save_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
