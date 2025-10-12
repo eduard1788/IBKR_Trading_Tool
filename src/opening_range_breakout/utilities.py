@@ -265,6 +265,10 @@ def load_excel_files():
             'Active Orders': Active_Orders,
             'Positions': Positions
         }
+
+        Stock_Activity.drop(columns='cumulative_position', inplace=True)
+        Stock_Activity.drop(columns='trade_number', inplace=True)
+        
         display_message(system_message, "File loaded successfully!", color="green")
 
         file2_path = filedialog.askopenfilename(title="Select XML file with trading activity", filetypes=[("XML files", "*.xml")])
@@ -575,6 +579,10 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     concat_orders = pd.concat([sheets_file_update['Active Orders'], df_orders], ignore_index=True).drop_duplicates()
     concat_position = pd.concat([sheets_file_update['Positions'], df_positions], ignore_index=True).drop_duplicates()
     
+
+    ################################################
+    ########## Calculating Risk Explosure ##########
+    ################################################
     concat_orders['multi'] = np.where(
     concat_orders['Action'] == "SELL",  # condition
     1,          # value if True
@@ -594,6 +602,59 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     concat_position = concat_position.merge(total_amount_stploss, on=keys_to_merge, how='left')
     concat_position['Capital Exposure'] = concat_position['Total Liq Amount'] - concat_position['Cost']
     
+
+    ################################################
+    ####### Adding trading number by symbol ########
+    ################################################
+    concat_orders_full["OrderQty"] = pd.to_numeric(concat_orders_full["OrderQty"], errors="coerce")
+    concat_orders_full = concat_orders_full.sort_values(["symbol", "OrderDate", "orderID"]).reset_index(drop=True)
+
+    # Initialize new columns
+    concat_orders_full["cumulative_position"] = 0
+    concat_orders_full["trade_number"] = 0
+
+    trade_counters = {}  # symbol -> current trade number
+    positions = {}        # symbol -> running cumulative positio
+
+    # Iterate over rows
+    for i, row in concat_orders_full.iterrows():
+        sym = row["symbol"]
+        qty = row["OrderQty"]
+
+        # Initialize if first time we see this symbol
+        if sym not in positions:
+            positions[sym] = 0
+            trade_counters[sym] = 1
+
+        # Update position
+        positions[sym] += qty
+        concat_orders_full.at[i, "cumulative_position"] = positions[sym]
+        concat_orders_full.at[i, "trade_number"] = trade_counters[sym]
+
+        # If the position returns to 0, increment trade counter for next round
+        if positions[sym] == 0:
+            trade_counters[sym] += 1
+
+
+    ########################################################
+    ########## Replace Unrealized Blanks in Balance ########
+    ########################################################
+    # Step 1: aggregate concat_position by date and account
+    concat_position_agg = (
+        concat_position.groupby(["Date", "Account"], as_index=False)["Unrealized PnL"]
+        .sum()
+        .rename(columns={"Unrealized PnL": "Unrealized PnL_sum"})
+    )
+    # Step 2: merge concat_summary_df with the aggregated concat_position_agg
+    concat_summary_df = concat_summary_df.merge(concat_position_agg, on=["Date", "Account"], how="left")
+
+    # Step 3: fill missing df1 col1 with the sum from df2
+    concat_summary_df["Unrealized PnL (manual)"] = concat_summary_df["Unrealized PnL (manual)"].fillna(concat_summary_df["Unrealized PnL_sum"])
+
+    # Step 4: drop helper column if you want
+    concat_summary_df = concat_summary_df.drop(columns=["Unrealized PnL_sum"])
+
+
     # --------------------------------------
     # ✅ 5. Saving as excell file
     # --------------------------------------
