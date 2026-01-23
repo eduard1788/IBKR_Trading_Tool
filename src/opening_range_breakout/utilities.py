@@ -14,6 +14,7 @@ from datetime import datetime
 import numpy as np
 
 ib = IB() # Define ib globally
+trades = False
 
 # Connect to the IB Gateway or TWS
 customtkinter.set_appearance_mode("dark")
@@ -255,9 +256,12 @@ def load_excel_files():
         Stock_Activity = load_sheets['Stock Activity']
         Active_Orders = load_sheets['Active Orders']
         Positions = load_sheets['Positions']
-        # Delete calculated columns
+        # Delete calculated columns for risk exposure
         Active_Orders.drop(columns='Total Liq Amount', inplace=True)
         Positions.drop(columns=['Action', 'Cost', 'Total Liq Amount', 'Capital Exposure'], inplace=True)
+        # Delete calculated columns for trade number
+        Stock_Activity.drop(columns='cumulative_position', inplace=True)
+        Stock_Activity.drop(columns='trade_number', inplace=True)
         # Store in a dictionary for later use
         sheets_file_update = {
             'Summary': Summary,
@@ -266,30 +270,32 @@ def load_excel_files():
             'Positions': Positions
         }
 
-        Stock_Activity.drop(columns='cumulative_position', inplace=True)
-        Stock_Activity.drop(columns='trade_number', inplace=True)
-        
-        display_message(system_message, "File loaded successfully!", color="green")
+        display_message(system_message, "File to update loaded successfully!", color="green")
 
         file2_path = filedialog.askopenfilename(title="Select XML file with trading activity", filetypes=[("XML files", "*.xml")])
         
         if file2_path:
             file_xml = ET.parse(file2_path)
+            trades = True
             # ... continue processing ...
         else:
             # Handle case where user cancels
             display_message(system_message, "No file selected for trade operation.", color="yellow")
+            trades = False
+            file_xml = None
+            # here you need to handle the None file to concatenate
 
         file3_path = filedialog.askopenfilename(title="Select your updated GP file (.xlsx or xls)", filetypes=[("Excel files", "*.xlsx *.xls")])
         
-        if not file1_path:
+        if file3_path:
+            gp_df = pd.read_excel(file3_path, sheet_name='gameplan')
+            gameplan = True
+        else:
             display_message(system_message, "No GP file selected.", color="yellow")
-            return
-
-        gp_df = pd.read_excel(file3_path, sheet_name='gameplan')
-
+            gameplan = False
+         
         # Ask user for save path
-        default_filename = f"trading_report_v2{datetime.now().strftime('%Y%m%d')}.xlsx"
+        default_filename = f"trading_report_v3_{datetime.now().strftime('%Y%m%d')}.xlsx"
         save_path = filedialog.asksaveasfilename(
             defaultextension=".xlsx",
             filetypes=[("Excel files", "*.xlsx")],
@@ -298,7 +304,7 @@ def load_excel_files():
                 )
         
         if not save_path:
-            display_message(system_message, "Save cancelled by user.", color="yellow")
+            display_message(system_message, "Save cancelled by user. You must select a saving path", color="yellow")
             return
 
         get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_filename)
@@ -389,89 +395,111 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
     # --------------------------------------
     # ✅ 2. Fetch Trades (Stock Activities)
     # --------------------------------------
-    root = file_xml.getroot()
+    if not trades:
+        # Define the column names
+        columns = [
+            "AccountId",
+            "symbol",
+            "orderID",
+            "OrderDate",
+            "OrderQty",
+            "OrderPrice",
+            "FilledQty",
+            "AvgFillPrice",
+            "FillAmount",
+            "TotalCommission"
+        ]
+        # Create an empty DataFrame
+        orders_full = pd.DataFrame(columns=columns)
+        # Update summary
+        print(f"Number of records in Stock Activity sheet {print(sheets_file_update['Stock Activity'].shape[0])}.")
+        print(f"Number of records to update in Stock Activity sheet 0.")
 
-    # 2. Extract records
-    records = []
-    for stmt in root.findall('.//FlexStatement'):
-        account_id = stmt.get('accountId')
-        confirms = stmt.find('TradeConfirms')
-        if confirms is None:
-            continue
-        for elem in confirms:
-            record = {'AccountId': account_id, 'RecordType': elem.tag}
-            # Copy every attribute on the element
-            record.update(elem.attrib)
-            records.append(record)
+    else:
+        root = file_xml.getroot()
 
-    # 3. Build DataFrame
-    df = pd.DataFrame(records)
+        # 2. Extract records
+        records = []
+        for stmt in root.findall('.//FlexStatement'):
+            account_id = stmt.get('accountId')
+            confirms = stmt.find('TradeConfirms')
+            if confirms is None:
+                continue
+            for elem in confirms:
+                record = {'AccountId': account_id, 'RecordType': elem.tag}
+                # Copy every attribute on the element
+                record.update(elem.attrib)
+                records.append(record)
 
-    # 4. (Optional) Convert numeric fields
-    numeric_cols = ['quantity', 'price', 'amount', 'netCash', 'commission']
-    for col in numeric_cols:
-        if col in df.columns:
+        # 3. Build DataFrame
+        df = pd.DataFrame(records)
+
+        # 4. (Optional) Convert numeric fields
+        numeric_cols = ['quantity', 'price', 'amount', 'netCash', 'commission']
+        for col in numeric_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # assume `df` is your parsed DataFrame
+        # first, parse the relevant datetime columns
+        df['dateTime'] = pd.to_datetime(df['dateTime'].str.replace(';', ' '), errors='coerce')
+        df['orderTime'] = pd.to_datetime(df['orderTime'].str.replace(';', ' '), errors='coerce')
+
+        # Ensure numeric columns are typed
+        numeric_cols = ['quantity', 'price', 'amount', 'netCash', 'commission']
+        for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
 
-    # assume `df` is your parsed DataFrame
-    # first, parse the relevant datetime columns
-    df['dateTime'] = pd.to_datetime(df['dateTime'].str.replace(';', ' '), errors='coerce')
-    df['orderTime'] = pd.to_datetime(df['orderTime'].str.replace(';', ' '), errors='coerce')
+        # Split by record type
+        df_summary = df[df.RecordType == 'SymbolSummary']   # one row per symbol summary
+        df_orders  = df[df.RecordType == 'Order']            # the parent orders
+        df_fills   = df[df.RecordType == 'TradeConfirm']     # the individual fills
 
-    # Ensure numeric columns are typed
-    numeric_cols = ['quantity', 'price', 'amount', 'netCash', 'commission']
-    for col in numeric_cols:
-        df[col] = pd.to_numeric(df[col], errors='coerce')
-
-    # Split by record type
-    df_summary = df[df.RecordType == 'SymbolSummary']   # one row per symbol summary
-    df_orders  = df[df.RecordType == 'Order']            # the parent orders
-    df_fills   = df[df.RecordType == 'TradeConfirm']     # the individual fills
-
-    # 1) Aggregate fills per orderID + symbol
-    fills_agg = (
-        df_fills
-        .groupby(['orderID', 'symbol'])
-        .agg(
-            FilledQty       = ('quantity', 'sum'),
-            FillAmount      = ('amount',   'sum'),
-            TotalCommission = ('commission','sum'),
-            # you could also compute a weighted avg fill price:
-            AvgFillPrice    = ('price', lambda x: (x * df_fills.loc[x.index,'quantity']).sum() / x.sum())
+        # 1) Aggregate fills per orderID + symbol
+        fills_agg = (
+            df_fills
+            .groupby(['orderID', 'symbol'])
+            .agg(
+                FilledQty       = ('quantity', 'sum'),
+                FillAmount      = ('amount',   'sum'),
+                TotalCommission = ('commission','sum'),
+                # you could also compute a weighted avg fill price:
+                AvgFillPrice    = ('price', lambda x: (x * df_fills.loc[x.index,'quantity']).sum() / x.sum())
+            )
+            .reset_index()
         )
-        .reset_index()
-    )
 
-    # 2) Merge with orders
-    orders_full = (
-        df_orders
-        .merge(fills_agg, on=['orderID','symbol'], how='left')
-        .assign(
-            OrderQty      = lambda d: d['quantity'],
-            OrderPrice    = lambda d: d['price']
+        # 2) Merge with orders
+        orders_full = (
+            df_orders
+            .merge(fills_agg, on=['orderID','symbol'], how='left')
+            .assign(
+                OrderQty      = lambda d: d['quantity'],
+                OrderPrice    = lambda d: d['price']
+            )
+            .rename(columns={
+                'tradeDate': 'OrderDate',
+                'trafficType': 'TransactionType'
+            })
+            # select/rename the columns you care about
+            [['AccountId','symbol','orderID','OrderDate','OrderQty','OrderPrice',
+            'FilledQty','AvgFillPrice','FillAmount','TotalCommission']]
         )
-        .rename(columns={
-            'tradeDate': 'OrderDate',
-            'trafficType': 'TransactionType'
-        })
-        # select/rename the columns you care about
-        [['AccountId','symbol','orderID','OrderDate','OrderQty','OrderPrice',
-        'FilledQty','AvgFillPrice','FillAmount','TotalCommission']]
-    )
-    orders_full['orderID'] = pd.to_numeric(orders_full['orderID'], errors='coerce')
-    # 3) (Optional) Combine with summary for a top-level view
-    # Group by accountId + symbol, summing quantity and amount
-    symbol_totals = (
-        df_summary
-        .groupby(['accountId', 'symbol'], as_index=False)
-        .agg(
-            SummaryQty    = ('quantity', 'sum'),
-            SummaryAmount = ('amount',   'sum')
+        orders_full['orderID'] = pd.to_numeric(orders_full['orderID'], errors='coerce')
+        # 3) (Optional) Combine with summary for a top-level view
+        # Group by accountId + symbol, summing quantity and amount
+        symbol_totals = (
+            df_summary
+            .groupby(['accountId', 'symbol'], as_index=False)
+            .agg(
+                SummaryQty    = ('quantity', 'sum'),
+                SummaryAmount = ('amount',   'sum')
+            )
+            # Rename accountId → AccountId for clarity (optional)
+            .rename(columns={'accountId':'AccountId'})
         )
-        # Rename accountId → AccountId for clarity (optional)
-        .rename(columns={'accountId':'AccountId'})
-    )
-
+        print(f"Number of records in Stock Activity sheet {sheets_file_update['Stock Activity'].shape[0]}.")
+        print(f"Number of records to update in Stock Activity sheet {orders_full.shape[0]}.")
 
     # --------------------------------------
     # ✅ 3. Fetch Open Positions
@@ -657,7 +685,7 @@ def get_ib_information(sheets_file_update, file_xml, gp_df, save_path, default_f
 
     # --------------------------------------
     # ✅ 5. Saving as excell file
-    # --------------------------------------
+    # --------------------------------------       
     # Save to Excel with multiple sheets
     with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
         concat_summary_df.to_excel(writer, sheet_name='Summary', index=False)
